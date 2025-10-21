@@ -1,0 +1,189 @@
+---
+title: "Code and Analysis.1"
+author: "Ethan Rosier"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+## Get data and library packages 
+
+data <- readRDS("Q1data.rds")
+
+
+
+library(tidyverse)
+library(srvyr)
+library(haven)
+library(scales)
+library(paletteer)
+
+
+```
+
+# Survey Data and Edited Variables
+```{r}
+## Make it svy and edit variables 
+
+svydata <- data |>
+  as_survey_design(
+    weights = VCF0009z,
+    nest = TRUE
+  )
+
+## Recoded Data for first graph 
+recoded <- svydata |>
+  mutate(partyid.recode = case_when(
+    VCF0302 %in% c(1:1) ~ "Republican" ,
+    VCF0302 %in% c(5:5) ~ "Democrat" ,
+    TRUE ~ "DK/Other/DNR"
+  )
+  ) |>
+  mutate(age.group = case_when(
+    VCF0101 %in% c(17:35) ~ "17-35",
+    VCF0101 %in% c(36:59) ~ "36:59",
+    VCF0101 %in% c(60:99) ~ "60+",
+    TRUE ~ "DNR"
+  )) |>
+  mutate (
+    Gender = case_when(
+      VCF0104 %in% c(1:1) ~ "Male",
+      VCF0104 %in% c(2:2) ~ "Female",
+      TRUE ~ "DNR/Other"
+    )
+  ) |>
+  mutate (
+    hadtochoose = case_when(
+      VCF0824 %in% c(1:1) ~ "Liberal",
+      VCF0824 %in% c(5:5) ~ "Conservative",
+      TRUE ~ "Moderate/DNR"
+    )
+  ) |>
+  mutate(
+    IncomePercentile = case_when(
+      VCF0114 %in% c(1:1) ~ "0-16%",
+      VCF0114 %in% c(2:2) ~ "17-33%",
+      VCF0114 %in% c(3:3) ~ "34-67%",
+      VCF0114 %in% c(4:4) ~ "68-95%",
+      VCF0114 %in% c(5:5) ~ "96-100%",
+      TRUE ~ "DK/NA/DNR"
+    )
+  ) |>
+  filter(
+    partyid.recode != "DK/Other/DNR",
+    hadtochoose != "Moderate/DNR"
+  ) |> 
+  group_by(VCF0004, partyid.recode, hadtochoose) |>
+  summarize(p = survey_prop(var = 'ci'))
+
+```
+
+#First Graph 
+```{r}
+
+## Make a graph
+ggplot(recoded, aes(x = VCF0004, y = p, color = hadtochoose)) +
+  geom_ribbon(aes(ymin = p_low, ymax = p_upp,
+                  fill = hadtochoose, color = NULL, group = hadtochoose),
+              alpha = 0.15, linewidth = 0) +
+  geom_line(linewidth = .75) +
+  facet_wrap(~ partyid.recode, ncol = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 1), limits = c(0, 1)) +
+  labs(
+    x = NULL, y = "Share Within Party",
+    title = "Ideology Over Time by Party",
+    color = "Ideology", fill = "Ideology"
+  ) +
+  scale_color_brewer(palette = "Set1") +
+  theme_minimal()
+
+```
+In the graph above, Conservative Democrats and Liberal Democrats swap shares of the party in mid 1990s. At the same time, the Conservative Republicans and Liberal Republicans came closer together. Since 2001,  Democrats have stayed pretty even on share identifying as conservative or liberal. While Republicans have seen a drastic shift away from Liberal Republicans. 
+
+
+# Different Variables 
+```{r}
+recoded.2 <- svydata |>
+  mutate(partyid.recode = case_when(
+    VCF0302 %in% c(1:1) ~ "Republican" ,
+    VCF0302 %in% c(5:5) ~ "Democrat" ,
+    TRUE ~ "DK/Other/DNR"
+  )
+  ) |>
+  mutate(age.group = case_when(
+    VCF0101 %in% c(17:35) ~ "17-35",
+    VCF0101 %in% c(36:59) ~ "36:59",
+    VCF0101 %in% c(60:99) ~ "60+",
+    TRUE ~ "DNR"
+  )) |>
+  mutate (
+    Gender = case_when(
+      VCF0104 %in% c(1:1) ~ "Male",
+      VCF0104 %in% c(2:2) ~ "Female",
+      TRUE ~ "DNR/Other"
+    )
+  ) |>
+  mutate (
+    hadtochoose = case_when(
+      VCF0824 %in% c(1:1) ~ "Liberal",
+      VCF0824 %in% c(5:5) ~ "Conservative",
+      TRUE ~ "Moderate/DNR"
+    )
+  ) |>
+  mutate(
+    IncomePercentile = case_when(
+      VCF0114 %in% c(1:1) ~ "0-16%",
+      VCF0114 %in% c(2:2) ~ "17-33%",
+      VCF0114 %in% c(3:3) ~ "34-67%",
+      VCF0114 %in% c(4:4) ~ "68-95%",
+      VCF0114 %in% c(5:5) ~ "96-100%",
+      TRUE ~ "DK/NA/DNR"
+    )
+  ) |>
+  filter(
+    IncomePercentile != "DK/NA/DNR",
+    partyid.recode != "DK/Other/DNR"
+  ) |> 
+  group_by(VCF0004, IncomePercentile, partyid.recode) |>
+  summarize(p = survey_prop(var = 'ci'))
+
+
+```
+
+```{r}
+## Second graph, democrats and republicans by income group 
+
+ggplot(recoded.2, aes(x = VCF0004, y = p, color = partyid.recode)) +
+  geom_line(size = 1) +
+  facet_wrap(~ IncomePercentile, ncol = 2) +
+  scale_y_continuous(labels = percent_format(accuracy = 1), limits = c(0, 1)) +
+  scale_x_continuous(breaks = pretty(recoded.2$VCF0004)) +
+  scale_color_manual(values = c(
+    "Democrat" = "#1F77B4",
+    "Republican" = "#D62728"
+  )) +
+  labs(
+    x = "Year",
+    y = "Share",
+    title = "Party Support Over Time by Income Group",
+    color = "Party"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    strip.background = element_blank(),
+    panel.spacing = unit(6, "pt")
+  )
+
+
+```
+
+The graph above shows % of Democrats and Republicans by income percentile. Lower income percentiles have a greater share of Democrats while the 68-95% share is pretty split over time. The 96-100% percentiles of earners favor the Republican party. 
+
+
